@@ -10,6 +10,11 @@ import cPickle as pickle
 NUMBER_CITIZENS = 5000
 NUMBER_REPRESENTATIVES = 30
 EXPECTED_NUMBER_OF_FRIENDS = 50
+UNITS_PER_CITIZEN = 10
+ANNUAL_BUDGET = 10000000 # 10 millions
+MAX_NUMBER_PROPOSALS = 500
+MAX_NUMBER_PROJECTS = 50
+
 #lambda_exponential = 1/(NUMBER_CITIZENS/10.)
 #lambda_exponential = 1/(2000/10.)
 
@@ -39,9 +44,11 @@ class Project:
         self.id = id #integer
         self.description = description #string
         self.category = category #[1,7] integers
-        self.budget = budget
-        self.units = 0
         self.location = location
+        self.budget = budget
+#        self.units = numpy.random.random_integers(1,1000)
+#        self.likes = numpy.random.random_integers(1,1000)
+        self.units = 0
         self.likes = 0
         self.dontlikes = 0
 
@@ -55,19 +62,92 @@ class City:
     def __init__(self):
         self.citizens = []
         self.annual_budget = 0
-        self.citizens_projects = []
-        self.representants_projects = []
+        self.proposals = []
+        self.projects_for_vote = []
+        self.projects_approved = []
 
-    def select_projects(projects_list):
+    def create_random_proposals(self):
+        """
+            Simulates the creation of a set of proposals (citizen projects)
+        """ 
+        global MAX_NUMBER_PROPOSALS
+        global LOCATIONS
+        global CATEGORIES
+        
+        for i in range(MAX_NUMBER_PROPOSALS):
+            description = ""
+            location = random.choice(LOCATIONS)
+            category = random.choice(CATEGORIES)
+            budget = random.uniform(500000, 1000000)
+            project = Project(i, description, category, budget, location)
+            self.proposals.append(project)
+
+    def select_proposals(self):
+        """
+            Select proposals that will be chosen for voting.
+        """
+        print "Selecting proposals... "
+        global MAX_NUMBER_PROJECTS
+        proposals_sorted = sorted(self.proposals, key=lambda project:project.likes, reverse=True)
+        for i in range(MAX_NUMBER_PROJECTS):
+            self.projects_for_vote.append(proposals_sorted[i])
+
+    def select_approved_projects(self):
         """
             Computes the votes received by every project and, based on the budget, choses the ones
             that will be executed.
-            Returns: list of projects that have been chosen for execution
+
+            Returns: list of projects that have been approved for execution
+        """
+        print "Selecting approved projects... "
+        global ANNUAL_BUDGET
+        
+        projects_sorted = sorted(self.projects_for_vote, key=lambda project:project.units, reverse=True)
+        budget_sum = 0
+        for p in projects_sorted:
+            budget_sum += p.budget
+            if budget_sum <= ANNUAL_BUDGET:
+                self.projects_approved.append(p)
+
+
+    def like_projects(self, t):
+        """
+            Repeates t times.
+        """
+        print "Liking projects... %d times" % (t,)
+        # 20% is "liking"
+        random_likers = random.sample(self.citizens, int(len(self.citizens)*0.2))
+        for citizen in random_likers:
+            for project in self.proposals:
+                like = citizen.like(project)
+                if like:
+                    project.likes += 1
+                    
+
+    def vote_projects(self):
         """
         
-        return []
+        """
+        print "Voting projects... "
+        # 60% is voting
+        random_voters = random.sample(self.citizens, int(len(self.citizens)*0.6))
+        for citizen in random_voters:
+            dic_projects_units = citizen.vote_projects(self.projects_for_vote)
+            for element in dic_projects_units:
+                project_id = element
+                project_units = dic_projects_units[element]
+                project = None
+                
+                # needs to enhance performance. Think about it.
+                for p in self.projects_for_vote:
+                    if p.id == project_id:
+                        project = p
+                        break
+                if project:
+                    project.units += project_units
 
-        
+
+
 class Calendar:
     """
         This class 
@@ -180,11 +260,13 @@ class Citizen():
             MODEL: ?
             
         """
+        like = False
+        cat = project.category
+        idea = self.opinions[cat]
+        if idea.weight > 0.5:
+            like = True
         
-        # INSERT CODE
-        # Evaluate 
-        
-        return True
+        return like
 
     def _recalculate_opinions(self, idea):
         """
@@ -208,16 +290,6 @@ class Citizen():
             idea = self.news_feed.pop()
             self._recalculate_opinions(idea)
         
-    def create_project(self):
-        """
-            Randomly create a project that represents his/her opinion.
-            
-            MODEL: ?
-        """
-        
-        project = None
-        
-        return project
     
     def vote_projects(self, projects_list):
         """
@@ -226,11 +298,20 @@ class Citizen():
             For example: a citizen has 10 units to distribute over 100 projects. 
             He can allocate 10 on only one project or choose 10 projects and allocate 1 unit per project.
             
-            Returns: list of tuples (project, units)
+            Returns: a dictionary (project_id, units)
             units are integers numbers > 0.
         """
+        global UNITS_PER_CITIZEN
+        dic_return = {}
         
-        return []
+        decorated = [(project.likes*self.opinions[project.category].weight, project) for project in projects_list]
+        decorated.sort()
+        
+        dic_return[decorated[0][1].id] = int(UNITS_PER_CITIZEN/2)
+        dic_return[decorated[1][1].id] = int(UNITS_PER_CITIZEN/3)
+        dic_return[decorated[2][1].id] = int(UNITS_PER_CITIZEN/6)
+        
+        return dic_return
     
     def vote_representatives(self, representatives_list):
         """
@@ -277,7 +358,15 @@ class Representative(Citizen):
 #####################################
 
 def start_game(city):
-    simulate_sharing_ideas(city, 100)
+    simulate_sharing_ideas(city, 10)
+    city.create_random_proposals()
+    simulate_sharing_ideas(city, 10)
+    city.like_projects(50)
+    city.select_proposals()
+    city.vote_projects()
+    city.select_approved_projects()
+#    save_statistics()
+    
     
 
 def simulate_sharing_ideas(city, k):
@@ -444,6 +533,11 @@ def depth_firts_search():
 
 
 
+#def main():
+city = create_game()
+start_game(city)
+
+"""
 def main():
     global CITY_10000
     filename = CITY_10000
@@ -456,7 +550,8 @@ def main():
         dump(city, filename)    
     
     start_game(city)
-
+"""
+"""
 def dump(city, filename):
     number_citizens = len(city.citizens)
     number_files = number_citizens / 200
@@ -489,3 +584,4 @@ def load(filename):
 
 if __name__ == '__main__':
 	main()
+"""
