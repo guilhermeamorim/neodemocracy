@@ -7,7 +7,7 @@ import cPickle as pickle
 
 ### PARAMETERS ####### 
 
-NUMBER_CITIZENS = 5000
+NUMBER_CITIZENS = 500
 NUMBER_REPRESENTATIVES = 30
 EXPECTED_NUMBER_OF_FRIENDS = 50
 UNITS_PER_CITIZEN = 10
@@ -203,9 +203,11 @@ class Citizen():
         
         # Ideas received to be processed. 
         # incluences the opinion.
-        # This content is dynamic and works like a queue that is analysed and discard
+        # This content is dynamic and works like a queue that is analysed and discarded
         self.news_feed = []
         
+        # used for search algorithms.
+        # has no meaning in the model.
         self.color = 'W'
     
     
@@ -533,55 +535,102 @@ def depth_firts_search():
 
 
 
-#def main():
-city = create_game()
-start_game(city)
+##############################################
+##### SAVING DATA INTO FILES - START #########
+##############################################
 
-"""
+
+def save_graph(graph):
+    """
+        The graph passed as argument to this function is a list of citizens
+    """
+    file_name = 'network1.sim'
+    print "Saving network into "+file_name
+    f = open(file_name, 'w')
+    f.write(str(len(graph))+'\n')
+    for citizen in graph:
+        f.write(str(citizen.id) + ';' + str(citizen.location) + ';' + str(citizen.influence_level) + ';' + \
+            str(citizen.proactivity_level) + '\n')
+        for op in citizen.opinions.keys():
+            value = citizen.opinions[op].weight
+            f.write(str(op)+':'+str(value)+';')
+        f.write('\n')
+        for friend in citizen.friends:
+            f.write(str(friend.id) + ';')
+        f.write('\n')
+    f.close()
+
+
+def load_graph(file_name):
+    """
+        Loads the graph saved on the file.
+        returns a list of citizens with its attributes set.
+    """
+    citizens = []
+    f = open(file_name, 'r')
+    number_citizens = int(f.readline())
+    
+    # creates the citizen's list.
+    for i in range(number_citizens):
+        # creates citizen object
+        citizen = Citizen(i)
+        citizens.append(citizen)
+
+    # we need this second loop because we cannot create the list of friends 
+    # if we don't have the whole list of citizens in memory.
+    for citizen in citizens:
+        # loads basic infor
+        inf_list = f.readline().split(';')
+        citizen.location = int(inf_list[1])
+        citizen.influence_level = int(inf_list[2])
+        citizen.proactivity_level = inf_list[3]
+        
+        # loads opinions
+        opinions_list = f.readline().split(';')
+        opinions = {}
+        
+        for op in opinions_list[:-1]:
+            cat_weight = op.split(':')
+            print cat_weight
+            cat = int(cat_weight[0])
+            weight = float(cat_weight[1])
+            idea = Idea(1,'',cat, weight)
+            opinions[cat] = idea
+
+        citizen.opinions = opinions
+              
+        # loads friends      
+        friends_ids_list = f.readline().split(';')
+        friends = []
+        for friend_id in friends_ids_list[:-1]:
+            # note that we match the position of the citizen in the citizens list with its id.
+            friends.append(citizens[int(friend_id)])
+        
+        citizen.friends = friends
+        
+    f.close()
+    
+    return citizens
+    
+
+
+##############################################
+##### SAVING DATA INTO FILES - END ###########
+##############################################
+
+
+
+
+
+
+
+
 def main():
-    global CITY_10000
-    filename = CITY_10000
-    try:
-        pkl_file = open(filename+'_1', 'rb')
-        city = load(filename)
-    except IOError:
-        raw_input('File %s not found. Press any key to create a new one' % (filename,))
-        city = create_game()
-        dump(city, filename)    
-    
-    start_game(city)
+    city = create_game()
+    save_graph(city.citizens)
+    load_graph('network1.sim')
+    #start_game(city)
 """
-"""
-def dump(city, filename):
-    number_citizens = len(city.citizens)
-    number_files = number_citizens / 200
-    for k in range(number_files):
-        i = (200*k)
-        f = (200*k) + 200
-        list_to_save = city.citizens[i:f].copy()
-        pkl_file = open(filename+'_'+str(k), 'wb')
-        pickle.dump(list_to_save, pkl_file)
-        pkl_file.close()
-    
-def load(filename):
-    print "Loading: " +  filename
-    i = 0
-    list_complete = []
-    while True:
-        try:
-            pkl_file = open(filename+'_'+str(i), 'rb')
-            list_citizens = pickle.load(pkl_file)
-            list_complete = list_complete + list_citizens
-            i+=1
-            pkl_file.close()
-        except IOError:
-            break    
-        
-    city = City()
-    city.citizens = list_complete
-    return city
-        
-
 if __name__ == '__main__':
 	main()
 """
