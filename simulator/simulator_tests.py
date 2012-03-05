@@ -16,36 +16,46 @@ def test_recalculate_opinions():
     print citizen.opinions[idea.category].weight
 
 def test_projects():
-    city = simulator.create_game()
-    simulator.start_game(city)
-    print "Proposals: %d | Projects for vote: %d | Projects approved: %d" % (len(city.proposals), len(city.projects_for_vote), \
-        len(city.projects_approved))
-    print "Creating proposals"
+    city = simulator.load_game('network1.sim')
+
     city.create_random_proposals()
-    print "Proposals: %d | Projects for vote: %d | Projects approved: %d" % (len(city.proposals), len(city.projects_for_vote), \
-        len(city.projects_approved))
-
-    print "Selecting proposals"
+    #simulate_sharing_ideas(city, 5)
+    city.like_projects(1)
     city.select_proposals()
-    print "Proposals: %d | Projects for vote: %d | Projects approved: %d" % (len(city.proposals), len(city.projects_for_vote), \
-        len(city.projects_approved))
+    city.vote_projects()
+#    city.vote_projects_representatives()
+#    city.select_approved_projects()
 
-    print "Approved projects"
-    city.select_approved_projects()
-    print "Proposals: %d | Projects for vote: %d | Projects approved: %d" % (len(city.proposals), len(city.projects_for_vote), \
-        len(city.projects_approved))
-    
     return city
 
 def test_happiness_level(city):
     for citizen in city.citizens:
         print str(citizen.compute_happiness_level(city.projects_approved)) + " "
 
-def main():
+def test_representative(city):
+    c = city.citizens[0]
+    rep = simulator.Representative(c.id, c.location, c.influence_level, c.proactivity_level)
+    print "ID: "+str(rep.id)
+    print "LOC: "+str(rep.location)
+    print type(rep)
+    rep.vote_projects_representative(city.projects_for_vote)
+    
+
+#def main():
     #test_recalculate_opinions()
-    city = test_projects()
-    test_happiness_level(city)
+    #city = test_projects()
+    #test_happiness_level(city)
+city = test_projects()
+#test_representative(city)
+c = city.citizens[0]
+rep = simulator.Representative(c.id, c.location, c.influence_level, c.proactivity_level, c.opinions)
+print "ID: "+str(rep.id)
+print "LOC: "+str(rep.location)
+print type(rep)
+#rep.vote_projects_representative(city.projects_for_vote)
+
     
-    
+"""    
 if __name__ == '__main__':
     main()
+"""

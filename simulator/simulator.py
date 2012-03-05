@@ -1,9 +1,5 @@
-from threading import Thread
-from threading import Event
-import time
 import random
 import numpy
-import cPickle as pickle
 from scipy import stats
 import math
 
@@ -17,19 +13,32 @@ ANNUAL_BUDGET = 10000000 # 10 millions
 MAX_NUMBER_PROPOSALS = 500
 MAX_NUMBER_PROJECTS = 50
 
+# Percentage of citizens that vote
+PERCENTAGE_VOTERS = 0.2
+
 #lambda_exponential = 1/(NUMBER_CITIZENS/10.)
 #lambda_exponential = 1/(2000/10.)
 
 # the categories in which an idea might be related to.
 # we assume that an idea is related to only one category
-CATEGORIES = [1,2,3,4,5,6,7]
+CATEGORIES = [1,2,3]
 INFLUENCE_LEVELS = [1,2]
-LOCATIONS = [1,2,3,4,5,6,7,8,9,10]
+LOCATIONS = [1,2,3,4]
+
+# indicates the percentage of voters per location
+LOCATIONS_PERC = [0.1,0.4,0.7,0.8,1]
 
 # Follower, Distributor, Creator
 PROACTIVITY_LEVELS = ['F', 'D', 'C']
 
 #######################
+
+
+
+## CATEGORIES DENSITY FUNCTION 
+from scipy.stats import rv_discrete
+pk = [0.25, 0.30, 0.10, 0.05, 0.15, 0.025, 0.125]
+categories_rv = rv_discrete(name='loaded', values=(CATEGORIES,pk))
 
 
 
@@ -51,12 +60,15 @@ class Project:
 #        self.units = numpy.random.random_integers(1,1000)
 #        self.likes = numpy.random.random_integers(1,1000)
         self.units = 0
+        
+        # political units
+        self.p_units = 0
         self.likes = 0
         self.dontlikes = 0
 
     def __str__(self):
-        return 'Project %d - Category: %d - Location: %d - Budget: %d - Units: %d - Likes: %d' % \
-            (self.id, self.category, self.location, self.budget, self.units, self.likes)
+        return 'Project %d - Category: %d - Location: %d - Budget: %d - Units: %d - P_Units: %d - Likes: %d' % \
+            (self.id, self.category, self.location, self.budget, self.units, self.p_units ,self.likes)
 
 class City:
     """
@@ -67,6 +79,7 @@ class City:
     """
     def __init__(self):
         self.citizens = []
+        self.representatives = []
         self.annual_budget = 0
         self.proposals = []
         self.projects_for_vote = []
@@ -83,7 +96,7 @@ class City:
         for i in range(MAX_NUMBER_PROPOSALS):
             description = ""
             location = random.choice(LOCATIONS)
-            category = random.choice(CATEGORIES)
+            category = categories_rv.rvs(size=1)[0]
             budget = random.uniform(500000, 1000000)
             project = Project(i, description, category, budget, location)
             self.proposals.append(project)
@@ -98,6 +111,13 @@ class City:
         for i in range(MAX_NUMBER_PROJECTS):
             self.projects_for_vote.append(proposals_sorted[i])
 
+#        raw_input("Pausa - antes")
+#        for p in proposals_sorted:
+#            print p
+#        raw_input("Pausa - depois")
+        
+        
+
     def select_approved_projects(self):
         """
             Computes the votes received by every project and, based on the budget, choses the ones
@@ -108,49 +128,82 @@ class City:
         print "Selecting approved projects... "
         global ANNUAL_BUDGET
         
-        projects_sorted = sorted(self.projects_for_vote, key=lambda project:project.units, reverse=True)
+        projects_citizens_sorted = sorted(self.projects_for_vote, key=lambda project:project.units, reverse=True)
+        projects_reps_sorted = sorted(self.projects_for_vote, key=lambda project:project.p_units, reverse=True)
         budget_sum = 0
-        for p in projects_sorted:
+        
+        for p in projects_citizens_sorted:
             budget_sum += p.budget
-            if budget_sum <= ANNUAL_BUDGET:
+            if budget_sum <= ANNUAL_BUDGET/2:
                 self.projects_approved.append(p)
 
+        budget_sum = 0
+        for p in projects_reps_sorted:
+            if p not in self.projects_approved:
+                budget_sum += p.budget
+                if budget_sum <= ANNUAL_BUDGET/2:
+                    self.projects_approved.append(p)
+
+
+        
+#        raw_input("select_approved_projects - antes")
+        for p in projects_citizens_sorted:
+            print p
+        print "\nReps\n"
+        for p in projects_reps_sorted:
+            print p
+        print "\nApproved\n"
+        for p in self.projects_approved:
+            print p
+
+        raw_input("select_approved_projects - depois")
 
     def like_projects(self, t):
         """
             Repeates t times.
         """
         print "Liking projects... %d times" % (t,)
-        # 20% is "liking"
-        random_likers = random.sample(self.citizens, int(len(self.citizens)*0.2))
-        for citizen in random_likers:
-            for project in self.proposals:
-                like = citizen.like(project)
-                if like:
-                    project.likes += 1
+        
+        for i in range(t):
+            # 20% is "liking"
+            random_likers = random.sample(self.citizens, int(len(self.citizens)*0.2))
+            for citizen in random_likers:
+                for project in self.proposals:
+                    like = citizen.like(project)
+                    if like:
+                        project.likes += 1
                     
+
 
     def vote_projects(self):
         """
         
         """
-        print "Voting projects... "
-        # 60% is voting
-        random_voters = random.sample(self.citizens, int(len(self.citizens)*0.6))
+        global PERCENTAGE_VOTERS
+        random_voters = random.sample(self.citizens, int(len(self.citizens)*PERCENTAGE_VOTERS))
+        print "Voting projects. %d voters." % (len(random_voters),)
+
         for citizen in random_voters:
             dic_projects_units = citizen.vote_projects(self.projects_for_vote)
-            for element in dic_projects_units:
-                project_id = element
-                project_units = dic_projects_units[element]
-                project = None
-                
-                # needs to enhance performance. Think about it.
-                for p in self.projects_for_vote:
-                    if p.id == project_id:
-                        project = p
-                        break
-                if project:
-                    project.units += project_units
+            for project in dic_projects_units:
+                project_units = dic_projects_units[project]
+                project.units += project_units
+
+
+    def vote_projects_representatives(self):
+        """
+        
+        """
+
+        print "Representatives voting.."
+        for rep in self.representatives:
+            #print type(rep)
+            dic_projects_units = rep.vote_projects_representative(self.projects_for_vote)
+            #print dic_projects_units
+            #print dic_projects_units.keys()
+            for project in dic_projects_units.keys():
+                project_units = dic_projects_units[project]
+                project.p_units += project_units
 
 
     def compute_social_happiness(self):
@@ -340,9 +393,12 @@ class Citizen():
             
         """
         like = False
+        rv = random.uniform(0,1)
         cat = project.category
         idea = self.opinions[cat]
-        if idea.weight > 0.5:
+        if idea.weight > 0.5 and project.location == self.location and rv > 0.6:
+            like = True
+        elif idea.weight > 0.8 and rv > 0.95:
             like = True
         
         return like
@@ -381,21 +437,23 @@ class Citizen():
             units are integers numbers > 0.
         """
         global UNITS_PER_CITIZEN
+        global LOCATIONS_PERC
         dic_return = {}
         
-        for p in projects_list:
-            print p
-        #decorated = [(project.likes*self.opinions[project.category].weight, project) for project in projects_list]
-        decorated = [(self.opinions[project.category].weight, project) for project in projects_list]
-        decorated.sort()
-        print decorated
+#        for p in projects_list:
+#            print p
         
-        dic_return[decorated[0][1].id] = int(UNITS_PER_CITIZEN/2)
-        dic_return[decorated[1][1].id] = int(UNITS_PER_CITIZEN/3)
-        dic_return[decorated[2][1].id] = int(UNITS_PER_CITIZEN/6)
+        projects_list = random.sample(projects_list, int(len(projects_list)*0.4))
+        rv = random.uniform(0,1)
         
+        if rv < LOCATIONS_PERC[self.location-1]:
+            decorated = [(self.opinions[project.category].weight, project) for project in projects_list]
+            decorated.sort(reverse=True)
+            
+            dic_return[decorated[0][1]] = int(UNITS_PER_CITIZEN/2)
+            dic_return[decorated[1][1]] = int(UNITS_PER_CITIZEN/3)
+            dic_return[decorated[2][1]] = int(UNITS_PER_CITIZEN/6)
         
-        print dic_return
         return dic_return
 
     def compute_happiness_level(self, approved_projects_list):
@@ -409,13 +467,14 @@ class Citizen():
             Otherwise, he disagrees.
             We compute the number of agrees and disagrees and compare them. 
             
-            We might include another parameters for the computation of the happiness level:
+            We included another parameters for the computation of the happiness level:
             - Location of the project (A citizen will be more happy if a project approved is in your neighbourhood)
         """
         projects_agreed = 0
         projects_disagreed = 0
         happiness_level = 0
         
+        # opinions
         for project in approved_projects_list:
             c_weight = self.opinions[project.category].weight
                         
@@ -425,9 +484,22 @@ class Citizen():
                 projects_disagreed += 1
         
         if projects_agreed > projects_disagreed:
-            happiness_level = 1
+            happiness_level = 0.5
         else:
             happiness_level = 0
+        
+        # location
+        number_projects_location = 0
+        for project in approved_projects_list:
+            if project.location == self.location:
+                number_projects_location += 1
+        
+        if number_projects_location == 1:
+            happiness_level += 0.1
+        elif number_projects_location == 2:
+            happiness_level += 0.3
+        elif number_projects_location > 2:
+            happiness_level += 0.5
         
         return happiness_level
         
@@ -459,8 +531,12 @@ class Representative(Citizen):
         The process of chosing the proposals and the projects is similar to the citizen's.
         In the case of proposals, 
     """
-    def __init__(self, id, location, influence_level, proactivity_level):
-        super(Citizen, self).__init__(id, location, influence_level, proactivity_level)
+    def __init__(self, id, location, influence_level, proactivity_level, opinions):
+        Citizen.__init__(self, id)
+        self.location = location
+        self.influence_level = influence_level
+        self.proactivity_level = proactivity_level
+        self.opinions = opinions
         
     def select_proposals(proposals_list):
         """
@@ -470,6 +546,44 @@ class Representative(Citizen):
         """
         
         return []
+
+    def vote_projects_representative(self, projects_list):
+        """
+            Gets the list of projects and chooses which projects should by approved.
+            This process is implemented by the allocation of units in the projects.
+            For example: a citizen has 10 units to distribute over 100 projects. 
+
+            He can allocate 10 on only one project or choose 10 projects and allocate 1 unit per project.
+            
+            Returns: a dictionary (project_id, units)
+            units are integers numbers > 0.
+
+            We can add here a variable that measures the political level of interest in the public opinion.
+            This is implemented by taking into consideration the number of likes of the projects.
+            So a representative that is focused on public issues will be more influenced by the number of likes of the projects.
+            For the moment, we consider only one type of representative and the number of voting units is equally distributed
+            taking into considerations number of likes and political opinions.
+
+        """
+        global UNITS_PER_CITIZEN
+        dic_return = {}
+        
+        projects_list = random.sample(projects_list, int(len(projects_list)*0.4))
+        decorated_likes = [(project.likes, project) for project in projects_list]
+#        print self.opinions
+        decorated_opinions = [(self.opinions[project.category].weight, project) for project in projects_list]
+        
+        decorated_likes.sort(reverse=True)
+        decorated_opinions.sort(reverse=True)
+        
+        dic_return[decorated_likes[0][1]] = 3
+        dic_return[decorated_likes[1][1]] = 2
+        dic_return[decorated_opinions[0][1]] = 3
+        dic_return[decorated_opinions[1][1]] = 2
+
+#        print dic_return
+        return dic_return
+
         
 
 #####################################
@@ -490,9 +604,10 @@ def start_game(city):
 def simulate_annual_round(city):
     city.create_random_proposals()
     #simulate_sharing_ideas(city, 5)
-    city.like_projects(1)
+    city.like_projects(5)
     city.select_proposals()
     city.vote_projects()
+    city.vote_projects_representatives()
     city.select_approved_projects()
     #statistics = city.compute_statistics()
     
@@ -542,11 +657,13 @@ def load_game(file_name=''):
     return city
 
 def choose_representatives(city, number_representatives):
-    representatives = random.sample(city.citizens, number_representatives)
-    city.representatives = representatives
-    for rep in representatives:
-        rep.influence_level = 2
-        rep.proactivity_level = 'C'
+    """
+        Randomly chooses the representatives of the city
+    """
+    citizens_reps = random.sample(city.citizens, number_representatives)
+    for c in citizens_reps:
+        representative = Representative(c.id, c.location, c.influence_level, c.proactivity_level, c.opinions)
+        city.representatives.append(representative)
 
 def setup_random_friends(citizens_list, number_citizens, expected_number_of_friends):
     for citizen in citizens_list:
@@ -674,11 +791,10 @@ def depth_firts_search():
 ##############################################
 
 
-def save_graph(graph):
+def save_graph(graph, file_name):
     """
         The graph passed as argument to this function is a list of citizens
     """
-    file_name = 'network1.sim'
     print "Saving network into "+file_name
     f = open(file_name, 'w')
     f.write(str(len(graph))+'\n')
@@ -759,8 +875,8 @@ def load_graph(file_name):
 
 
 def main():
-    city = load_game('network1.sim')
-#    save_graph(city.citizens)
+    city = load_game('network2.sim')
+#    save_graph(city.citizens, 'network2.sim')
 #    citizens = load_graph('network1.sim')
     
     start_game(city)
