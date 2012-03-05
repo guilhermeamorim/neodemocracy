@@ -4,10 +4,12 @@ import time
 import random
 import numpy
 import cPickle as pickle
+from scipy import stats
+import math
 
 ### PARAMETERS ####### 
 
-NUMBER_CITIZENS = 500
+NUMBER_CITIZENS = 10000
 NUMBER_REPRESENTATIVES = 30
 EXPECTED_NUMBER_OF_FRIENDS = 50
 UNITS_PER_CITIZEN = 10
@@ -23,9 +25,9 @@ MAX_NUMBER_PROJECTS = 50
 CATEGORIES = [1,2,3,4,5,6,7]
 INFLUENCE_LEVELS = [1,2]
 LOCATIONS = [1,2,3,4,5,6,7,8,9,10]
-PROACTIVITY_LEVELS = ['F', 'D', 'C']
 
-CITY_10000 = 'city10000/city10000'
+# Follower, Distributor, Creator
+PROACTIVITY_LEVELS = ['F', 'D', 'C']
 
 #######################
 
@@ -51,6 +53,10 @@ class Project:
         self.units = 0
         self.likes = 0
         self.dontlikes = 0
+
+    def __str__(self):
+        return 'Project %d - Category: %d - Location: %d - Budget: %d - Units: %d - Likes: %d' % \
+            (self.id, self.category, self.location, self.budget, self.units, self.likes)
 
 class City:
     """
@@ -147,6 +153,70 @@ class City:
                     project.units += project_units
 
 
+    def compute_social_happiness(self):
+        """
+            Returns the mean of the citizens happiness levels
+        """
+        citizens_happiness = []
+        for citizen in self.citizens:
+            citizens_happiness.append(citizen.compute_happiness_level(self.projects_approved))
+        
+        return stats.describe(citizens_happiness)[2]
+        
+
+    def compute_social_engagement(self):
+        """
+            
+        """
+        
+        return 0
+
+
+    def compute_statistics(self):
+        """
+            Compute statistics of a annual round of sharing ideias, liking, voting...
+            Statistics:
+            - Total number of ideas shared
+            - Total number of likes
+            - Total number of don't likes
+            - Total number of votes
+            - Total number of projects approved
+            - Level of social engagement
+            - Level of social happiness
+            
+            Returns a tuple with the statistics above.
+            
+        """
+
+    def reset(self):
+        """
+            Resets values....
+            
+        """
+        self.proposals = []
+        self.projects_for_vote = []
+        self.projects_approved = []
+
+    def compute_overall_opinions(self):
+        """
+            Computes the histograms of the opinions for each category
+        """
+        opinions_list = []
+        global CATEGORIES
+        i=0
+        for cat in CATEGORIES:
+            opinions_list.append([])
+            for citizen in self.citizens:
+                opinions_list[i].append(citizen.opinions[cat].weight)
+            i+=1
+        
+        i=0;
+        for cat in CATEGORIES:
+            mean = stats.describe(opinions_list[i])[2]
+            std = math.sqrt(stats.describe(opinions_list[i])[3])
+            print "Category: %d - Mean: %f - STD: %f" % (cat, mean, std)
+            i+=1
+        
 
 class Calendar:
     """
@@ -205,6 +275,13 @@ class Citizen():
         # incluences the opinion.
         # This content is dynamic and works like a queue that is analysed and discarded
         self.news_feed = []
+        
+        # Happiness level of the citizen
+        # We initially consider the happiness level as a discrete dichotomous variable
+        # 0 -> not happy
+        # 1 -> happy
+        self.happiness_level = 0
+        
         
         # used for search algorithms.
         # has no meaning in the model.
@@ -306,14 +383,54 @@ class Citizen():
         global UNITS_PER_CITIZEN
         dic_return = {}
         
-        decorated = [(project.likes*self.opinions[project.category].weight, project) for project in projects_list]
+        for p in projects_list:
+            print p
+        #decorated = [(project.likes*self.opinions[project.category].weight, project) for project in projects_list]
+        decorated = [(self.opinions[project.category].weight, project) for project in projects_list]
         decorated.sort()
+        print decorated
         
         dic_return[decorated[0][1].id] = int(UNITS_PER_CITIZEN/2)
         dic_return[decorated[1][1].id] = int(UNITS_PER_CITIZEN/3)
         dic_return[decorated[2][1].id] = int(UNITS_PER_CITIZEN/6)
         
+        
+        print dic_return
         return dic_return
+
+    def compute_happiness_level(self, approved_projects_list):
+        """
+            Computes citizen's happiness level based on:
+            - Match between approved projects and the citizen's opinions
+            
+            The matching process is quite simple.
+            For every project we test the weight of the opinion of the citizen for the category of project.
+            If the citizen have an opinion > 0 for the category, we consider that he agrees with it.
+            Otherwise, he disagrees.
+            We compute the number of agrees and disagrees and compare them. 
+            
+            We might include another parameters for the computation of the happiness level:
+            - Location of the project (A citizen will be more happy if a project approved is in your neighbourhood)
+        """
+        projects_agreed = 0
+        projects_disagreed = 0
+        happiness_level = 0
+        
+        for project in approved_projects_list:
+            c_weight = self.opinions[project.category].weight
+                        
+            if c_weight > 0:
+                projects_agreed += 1
+            else:
+                projects_disagreed += 1
+        
+        if projects_agreed > projects_disagreed:
+            happiness_level = 1
+        else:
+            happiness_level = 0
+        
+        return happiness_level
+        
     
     def vote_representatives(self, representatives_list):
         """
@@ -360,15 +477,24 @@ class Representative(Citizen):
 #####################################
 
 def start_game(city):
-    simulate_sharing_ideas(city, 10)
+    number_rounds = 10
+    for i in range(number_rounds):
+        statistics = simulate_annual_round(city)
+        sh = city.compute_social_happiness()
+        print "Social Happiness: " + str(sh)
+        city.reset()
+        city.compute_overall_opinions()
+        # save statistics into csv file.
+        
+
+def simulate_annual_round(city):
     city.create_random_proposals()
-    simulate_sharing_ideas(city, 10)
-    city.like_projects(50)
+    #simulate_sharing_ideas(city, 5)
+    city.like_projects(1)
     city.select_proposals()
     city.vote_projects()
     city.select_approved_projects()
-#    save_statistics()
-    
+    #statistics = city.compute_statistics()
     
 
 def simulate_sharing_ideas(city, k):
@@ -401,28 +527,34 @@ def simulate_sharing_ideas(city, k):
 ##### GAME CREATION BEGINS HERE  ####
 #####################################
 
-def create_game():
+def load_game(file_name=''):
     city = City()
     global NUMBER_CITIZENS
     global EXPECTED_NUMBER_OF_FRIENDS
-    create_graph(city, NUMBER_CITIZENS, EXPECTED_NUMBER_OF_FRIENDS)
-    first_representatives(city, NUMBER_REPRESENTATIVES)
+    if file_name != '':
+        citizens = load_graph(file_name)
+        city.citizens = citizens
+    else:
+        citizens = create_graph(NUMBER_CITIZENS, EXPECTED_NUMBER_OF_FRIENDS)
+        city.citizens = citizens
+        
+    choose_representatives(city, NUMBER_REPRESENTATIVES)
     return city
 
-def first_representatives(city, number_representatives):
+def choose_representatives(city, number_representatives):
     representatives = random.sample(city.citizens, number_representatives)
     city.representatives = representatives
     for rep in representatives:
         rep.influence_level = 2
         rep.proactivity_level = 'C'
 
-def setup_random_friends(city, number_citizens, expected_number_of_friends):
-    for citizen in city.citizens:
+def setup_random_friends(citizens_list, number_citizens, expected_number_of_friends):
+    for citizen in citizens_list:
         number_friends = int(random.uniform(0,expected_number_of_friends*2))
         print "Citizen %d - Friends: %d - Opinions: %d" % (citizen.id, number_friends, len(citizen.opinions))
         
         for i in range(number_friends):
-            friend = random.choice(city.citizens)
+            friend = random.choice(citizens_list)
             if friend != citizen and friend not in citizen.friends:
                 citizen.friends.append(friend)
                 friend.friends.append(citizen)
@@ -494,13 +626,15 @@ def create_random_citizen(i):
     return citizen
     
         
-def create_graph(city, number_citizens, expected_number_of_friends):
-    
+def create_graph(number_citizens, expected_number_of_friends):
+    citizens_list = []
     for i in range(number_citizens):
         citizen = create_random_citizen(i)
-        city.citizens.append(citizen)
+        citizens_list.append(citizen)
         
-    setup_random_friends(city, number_citizens, expected_number_of_friends)
+    setup_random_friends(citizens_list, number_citizens, expected_number_of_friends)
+    
+    return citizens_list
     
 
 def check_graph():
@@ -591,7 +725,6 @@ def load_graph(file_name):
         
         for op in opinions_list[:-1]:
             cat_weight = op.split(':')
-            print cat_weight
             cat = int(cat_weight[0])
             weight = float(cat_weight[1])
             idea = Idea(1,'',cat, weight)
@@ -626,11 +759,12 @@ def load_graph(file_name):
 
 
 def main():
-    city = create_game()
-    save_graph(city.citizens)
-    load_graph('network1.sim')
-    #start_game(city)
-"""
+    city = load_game('network1.sim')
+#    save_graph(city.citizens)
+#    citizens = load_graph('network1.sim')
+    
+    start_game(city)
+
 if __name__ == '__main__':
 	main()
-"""
+

@@ -34,11 +34,18 @@ def test_projects():
     city.select_approved_projects()
     print "Proposals: %d | Projects for vote: %d | Projects approved: %d" % (len(city.proposals), len(city.projects_for_vote), \
         len(city.projects_approved))
+    
+    return city
 
+def test_happiness_level(city):
+    for citizen in city.citizens:
+        print str(citizen.compute_happiness_level(city.projects_approved)) + " "
 
 def main():
     #test_recalculate_opinions()
-    test_projects()
+    city = test_projects()
+    test_happiness_level(city)
+    
     
 if __name__ == '__main__':
     main()
