@@ -2,6 +2,7 @@ import random
 import numpy
 from scipy import stats
 import math
+from scipy.stats import rv_discrete
 
 ### PARAMETERS ####### 
 
@@ -14,7 +15,7 @@ MAX_NUMBER_PROPOSALS = 500
 MAX_NUMBER_PROJECTS = 50
 
 # Percentage of citizens that vote
-PERCENTAGE_VOTERS = 0.2
+PERCENTAGE_VOTERS = 0.1
 
 #lambda_exponential = 1/(NUMBER_CITIZENS/10.)
 #lambda_exponential = 1/(2000/10.)
@@ -26,7 +27,7 @@ INFLUENCE_LEVELS = [1,2]
 LOCATIONS = [1,2,3,4]
 
 # indicates the percentage of voters per location
-LOCATIONS_PERC = [0.1,0.4,0.7,0.8,1]
+LOCATIONS_PERC = [0.1,0.4,0.7,0.8]
 
 # Follower, Distributor, Creator
 PROACTIVITY_LEVELS = ['F', 'D', 'C']
@@ -35,11 +36,14 @@ PROACTIVITY_LEVELS = ['F', 'D', 'C']
 
 
 
-## CATEGORIES DENSITY FUNCTION 
-from scipy.stats import rv_discrete
-pk = [0.25, 0.30, 0.10, 0.05, 0.15, 0.025, 0.125]
-categories_rv = rv_discrete(name='loaded', values=(CATEGORIES,pk))
+## LOCATIONS DENSITY FUNCTION
+pk = [0.25, 0.25, 0.25, 0.25]
+locations_rv = rv_discrete(name='loaded', values=(LOCATIONS,pk))
 
+
+## CATEGORIES DENSITY FUNCTION 
+pk = [0.333, 0.333, 0.333]
+categories_rv = rv_discrete(name='loaded', values=(CATEGORIES,pk))
 
 
 
@@ -95,7 +99,7 @@ class City:
         
         for i in range(MAX_NUMBER_PROPOSALS):
             description = ""
-            location = random.choice(LOCATIONS)
+            location = locations_rv.rvs(size=1)[0]
             category = categories_rv.rvs(size=1)[0]
             budget = random.uniform(500000, 1000000)
             project = Project(i, description, category, budget, location)
@@ -166,7 +170,7 @@ class City:
         
         for i in range(t):
             # 20% is "liking"
-            random_likers = random.sample(self.citizens, int(len(self.citizens)*0.2))
+            random_likers = random.sample(self.citizens, int(len(self.citizens)*0.4))
             for citizen in random_likers:
                 for project in self.proposals:
                     like = citizen.like(project)
@@ -396,9 +400,9 @@ class Citizen():
         rv = random.uniform(0,1)
         cat = project.category
         idea = self.opinions[cat]
-        if idea.weight > 0.5 and project.location == self.location and rv > 0.6:
+        if idea.weight > -0.6 and project.location == self.location and rv > 0.6:
             like = True
-        elif idea.weight > 0.8 and rv > 0.95:
+        elif idea.weight > -0.3 and rv > 0.90:
             like = True
         
         return like
@@ -411,7 +415,7 @@ class Citizen():
         """
         
         last_idea = self.opinions[idea.category]
-        last_idea.weight = last_idea.weight+(idea.weight*0.05)
+        last_idea.weight = last_idea.weight+(idea.weight*0.001)
         if last_idea.weight >1:
             last_idea.weight = 1
         elif last_idea.weight <-1:
@@ -576,10 +580,11 @@ class Representative(Citizen):
         decorated_likes.sort(reverse=True)
         decorated_opinions.sort(reverse=True)
         
-        dic_return[decorated_likes[0][1]] = 3
-        dic_return[decorated_likes[1][1]] = 2
-        dic_return[decorated_opinions[0][1]] = 3
-        dic_return[decorated_opinions[1][1]] = 2
+        #dic_return[decorated_likes[0][1]] = 3
+        #dic_return[decorated_likes[1][1]] = 2
+        dic_return[decorated_opinions[0][1]] = 5
+        dic_return[decorated_opinions[1][1]] = 3
+        dic_return[decorated_opinions[2][1]] = 2
 
 #        print dic_return
         return dic_return
@@ -603,7 +608,7 @@ def start_game(city):
 
 def simulate_annual_round(city):
     city.create_random_proposals()
-    #simulate_sharing_ideas(city, 5)
+    simulate_sharing_ideas(city, 5)
     city.like_projects(5)
     city.select_proposals()
     city.vote_projects()
@@ -663,6 +668,7 @@ def choose_representatives(city, number_representatives):
     citizens_reps = random.sample(city.citizens, number_representatives)
     for c in citizens_reps:
         representative = Representative(c.id, c.location, c.influence_level, c.proactivity_level, c.opinions)
+        representative.opinions = setup_random_opinions_representatives()
         city.representatives.append(representative)
 
 def setup_random_friends(citizens_list, number_citizens, expected_number_of_friends):
@@ -687,10 +693,27 @@ def setup_random_opinions():
     ideas_dic = {}
     
     for i in CATEGORIES:
-        idea = Idea(1,"",i, random.uniform(-1,1))
+#        idea = Idea(1,"",i, random.uniform(-1,1))
+        idea = Idea(1,"",i, -(1-random.expovariate(6)))
         ideas_dic[i] = idea
         
     return ideas_dic
+
+def setup_random_opinions_representatives():
+    """
+        Return a set of ideas.
+
+    """
+    global CATEGORIES
+    
+    ideas_dic = {}
+    
+    for i in CATEGORIES:
+        idea = Idea(1,"",i, 1-random.expovariate(6))
+        ideas_dic[i] = idea
+        
+    return ideas_dic
+
 
 def setup_random_influence_level():
     """
@@ -875,8 +898,8 @@ def load_graph(file_name):
 
 
 def main():
-    city = load_game('network2.sim')
-#    save_graph(city.citizens, 'network2.sim')
+    city = load_game('network4.sim')
+#    save_graph(city.citizens, 'network4.sim')
 #    citizens = load_graph('network1.sim')
     
     start_game(city)
