@@ -3,22 +3,25 @@ import numpy
 from scipy import stats
 import math
 from scipy.stats import rv_discrete
+import networkx as nx
+import matplotlib.pyplot as plt
+
 
 ### PARAMETERS ####### 
 
 NUMBER_CITIZENS = 10000
-NUMBER_REPRESENTATIVES = 30
+NUMBER_REPRESENTATIVES = 9
 EXPECTED_NUMBER_OF_FRIENDS = 50
 UNITS_PER_CITIZEN = 10
 ANNUAL_BUDGET = 10000000 # 10 millions
 MAX_NUMBER_PROPOSALS = 500
 MAX_NUMBER_PROJECTS = 50
 
-# Percentage of citizens that vote
-PERCENTAGE_VOTERS = 0.1
+# This factor controls the general rate of influence.
+INFLUENCE_FACTOR = 0.0001
 
-#lambda_exponential = 1/(NUMBER_CITIZENS/10.)
-#lambda_exponential = 1/(2000/10.)
+# Percentage of citizens that vote
+PERCENTAGE_VOTERS = 0.5
 
 # the categories in which an idea might be related to.
 # we assume that an idea is related to only one category
@@ -27,7 +30,7 @@ INFLUENCE_LEVELS = [1,2]
 LOCATIONS = [1,2,3,4]
 
 # indicates the percentage of voters per location
-LOCATIONS_PERC = [0.1,0.4,0.7,0.8]
+LOCATIONS_PERC = [0.8,0.8,0.1,0.1]
 
 # Follower, Distributor, Creator
 PROACTIVITY_LEVELS = ['F', 'D', 'C']
@@ -273,6 +276,41 @@ class City:
             std = math.sqrt(stats.describe(opinions_list[i])[3])
             print "Category: %d - Mean: %f - STD: %f" % (cat, mean, std)
             i+=1
+
+    def draw_graph(self):
+        """
+            Draws the graph of relations
+        """
+        G=nx.Graph()
+        
+        list_location1 = []
+        list_location2 = []
+        list_location3 = []
+        list_location4 = []
+        
+        for citizen in self.citizens:
+            G.add_node(citizen.id)
+            if citizen.location == 1:
+                list_location1.append(citizen.id)
+            elif citizen.location == 2:
+                list_location2.append(citizen.id)
+            elif citizen.location == 3:
+                list_location3.append(citizen.id)
+            else: 
+                list_location4.append(citizen.id)
+
+        for citizen in self.citizens:
+            for friend in citizen.friends:
+                G.add_edge(citizen.id,friend.id)
+
+        pos = nx.random_layout(G)
+        nx.draw_networkx_nodes(G,pos,node_size=60,nodelist=list_location1, node_color='r')
+        nx.draw_networkx_nodes(G,pos,node_size=60,nodelist=list_location2, node_color='g')
+        nx.draw_networkx_nodes(G,pos,node_size=60,nodelist=list_location3, node_color='b')
+        nx.draw_networkx_nodes(G,pos,node_size=60,nodelist=list_location4, node_color='y')
+        nx.draw_networkx_edges(G,pos, width=1)
+
+        plt.show()
         
 
 class Calendar:
@@ -400,9 +438,9 @@ class Citizen():
         rv = random.uniform(0,1)
         cat = project.category
         idea = self.opinions[cat]
-        if idea.weight > -0.6 and project.location == self.location and rv > 0.6:
+        if idea.weight > 0.3 and project.location == self.location and rv > 0.4:
             like = True
-        elif idea.weight > -0.3 and rv > 0.90:
+        elif idea.weight > 0.6 and rv > 0.80:
             like = True
         
         return like
@@ -414,8 +452,10 @@ class Citizen():
             MODEL: ?
         """
         
+        global INFLUENCE_FACTOR
+        
         last_idea = self.opinions[idea.category]
-        last_idea.weight = last_idea.weight+(idea.weight*0.001)
+        last_idea.weight = last_idea.weight+(idea.weight*INFLUENCE_FACTOR)
         if last_idea.weight >1:
             last_idea.weight = 1
         elif last_idea.weight <-1:
@@ -474,10 +514,34 @@ class Citizen():
             We included another parameters for the computation of the happiness level:
             - Location of the project (A citizen will be more happy if a project approved is in your neighbourhood)
         """
+        
+        global CATEGORIES
         projects_agreed = 0
         projects_disagreed = 0
         happiness_level = 0
         
+        """
+        ap_c1 = 0
+        ap_c2 = 0
+        ap_c3 = 0
+        
+        for p in approved_projects_list:
+            if p.category == 1:
+                ap_c1 +=1
+            elif p.category == 2:
+                ap_c2 +=1
+            elif p.category == 3:
+                ap_c2 +=3
+        
+        for c in CATEGORIES:
+            c_weight = self.opinions[c].weight
+            if c_weight > 0 and c == 1:
+                projects_agreed += ap_c1
+            elif c_weight > 0 and c == 2:
+                projects_agreed += ap_c2
+            elif c_weight > 0 and c == 3:
+                projects_agreed += ap_c3
+        """
         # opinions
         for project in approved_projects_list:
             c_weight = self.opinions[project.category].weight
@@ -487,24 +551,30 @@ class Citizen():
             else:
                 projects_disagreed += 1
         
-        if projects_agreed > projects_disagreed:
-            happiness_level = 0.5
-        else:
-            happiness_level = 0
+        happiness_level = float(projects_agreed) / len(approved_projects_list)
+        if happiness_level > 0.25:
+            happiness_level = 1
+        else: 
+            happiness_level = happiness_level * 4
+#        if projects_agreed > projects_disagreed:
+#            happiness_level = 0.5
+#        else:
+#            happiness_level = 0
+
         
         # location
-        number_projects_location = 0
-        for project in approved_projects_list:
-            if project.location == self.location:
-                number_projects_location += 1
-        
-        if number_projects_location == 1:
-            happiness_level += 0.1
-        elif number_projects_location == 2:
-            happiness_level += 0.3
-        elif number_projects_location > 2:
-            happiness_level += 0.5
-        
+        #number_projects_location = 0
+        #for project in approved_projects_list:
+        #    if project.location == self.location:
+        #        number_projects_location += 1
+        #
+        #if number_projects_location == 1:
+        #    happiness_level += 0.1
+        #elif number_projects_location == 2:
+        #    happiness_level += 0.3
+        #elif number_projects_location > 2:
+        #    happiness_level += 0.5
+       
         return happiness_level
         
     
@@ -609,7 +679,7 @@ def start_game(city):
 def simulate_annual_round(city):
     city.create_random_proposals()
     simulate_sharing_ideas(city, 5)
-    city.like_projects(5)
+    city.like_projects(2)
     city.select_proposals()
     city.vote_projects()
     city.vote_projects_representatives()
@@ -683,18 +753,46 @@ def setup_random_friends(citizens_list, number_citizens, expected_number_of_frie
                 friend.friends.append(citizen)
 
 
-def setup_random_opinions():
+def setup_random_opinions(citizen):
     """
         Return a set of ideas.
         We assume that every citizen will have opinions about every category.
     """
     global CATEGORIES
+    global LOCATOINS
     
     ideas_dic = {}
     
     for i in CATEGORIES:
-#        idea = Idea(1,"",i, random.uniform(-1,1))
-        idea = Idea(1,"",i, -(1-random.expovariate(6)))
+        if citizen.location == 1:
+            if i == 1:
+                idea = Idea(1,"",i, random.uniform(0.5,1))
+            elif i == 2:
+                idea = Idea(1,"",i, random.uniform(-1,-0.5))
+            elif i == 3:
+                idea = Idea(1,"",i, random.uniform(-1,-0.5))
+        elif citizen.location == 2:
+            if i == 1:
+                idea = Idea(1,"",i, random.uniform(-1,-0.5))
+            elif i == 2:
+                idea = Idea(1,"",i, random.uniform(0.5,1))
+            elif i == 3:
+                idea = Idea(1,"",i, random.uniform(-1,-0.5))
+        elif citizen.location == 3:
+            if i == 1:
+                idea = Idea(1,"",i, random.uniform(-1,-0.5))
+            elif i == 2:
+                idea = Idea(1,"",i, random.uniform(-1,-0.5))
+            elif i == 3:
+                idea = Idea(1,"",i, random.uniform(0.5,1))
+        else:
+            if i == 1:
+                idea = Idea(1,"",i, random.uniform(-1,-0.5))
+            elif i == 2:
+                idea = Idea(1,"",i, random.uniform(-1,-0.5))
+            elif i == 3:
+                idea = Idea(1,"",i, random.uniform(-1,-0.5))
+#        idea = Idea(1,"",i, -(1-random.expovariate(6)))
         ideas_dic[i] = idea
         
     return ideas_dic
@@ -709,7 +807,15 @@ def setup_random_opinions_representatives():
     ideas_dic = {}
     
     for i in CATEGORIES:
-        idea = Idea(1,"",i, 1-random.expovariate(6))
+        #idea = Idea(1,"",i, 1-random.expovariate(6))
+        if i == 1:
+            idea = Idea(1,"",i, random.uniform(-1,-0.5))
+        elif i == 2:
+            idea = Idea(1,"",i, random.uniform(-1,-0.5))
+        elif i == 3:
+            idea = Idea(1,"",i, random.uniform(0.5,1))
+    
+#        idea = Idea(1,"",i, random.uniform(0.5,1))
         ideas_dic[i] = idea
         
     return ideas_dic
@@ -759,9 +865,9 @@ def setup_random_location():
 
 def create_random_citizen(i):
     citizen = Citizen(i)
-    citizen.opinions = setup_random_opinions()
-    citizen.influence_level = setup_random_influence_level()
     citizen.location = setup_random_location()
+    citizen.opinions = setup_random_opinions(citizen)
+    citizen.influence_level = setup_random_influence_level()
     citizen.proactivity_level = setup_random_proactivity_level()
     return citizen
     
@@ -898,12 +1004,14 @@ def load_graph(file_name):
 
 
 def main():
-    city = load_game('network4.sim')
-#    save_graph(city.citizens, 'network4.sim')
+    city = load_game('network5.sim')
+#   city = load_game()
+#   save_graph(city.citizens, 'network5.sim')
 #    citizens = load_graph('network1.sim')
-    
+#    city.draw_graph()
     start_game(city)
 
 if __name__ == '__main__':
 	main()
+
 
